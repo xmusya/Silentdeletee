@@ -4,20 +4,23 @@ import { storage } from "@vendetta/plugin";
 import { logger } from "@vendetta";
 import { React, ReactNative as RN } from "@vendetta/metro/common";
 import { findInReactTree } from "@vendetta/utils";
-import { getAssetIDByName } from "@vendetta/ui/assets";
 import Settings from "./Settings";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const ActionSheet = findByProps("openLazy", "hideActionSheet");
-const { ActionSheetRow } = findByProps("ActionSheetRow");
 
-// Try several icon names used across Discord versions for the delete/trash icon
-const DeleteIcon =
-    getAssetIDByName("ic_message_delete") ??
-    getAssetIDByName("TrashIcon") ??
-    getAssetIDByName("trash") ??
-    getAssetIDByName("ic_trash");
+// Collects the visible text of an ActionSheetRow so we can recognise Discord's Delete row
+function rowText(row: any): string {
+    const p = row?.props ?? {};
+    return [p.label, p.message, p.text, typeof p.children === "string" ? p.children : ""]
+        .filter((t): t is string => typeof t === "string")
+        .join(" ")
+        .toLowerCase();
+}
+
+const isDeleteRow = (row: any) =>
+    typeof row?.props?.onPress === "function" && /delete|remove|удал/i.test(rowText(row));
 
 async function silentDeleteMessage(channelId: string, messageId: string) {
     const RestAPI = findByProps("get", "post", "del", "patch");
@@ -72,8 +75,15 @@ export default {
                     // Self-cleaning patch — removed after sheet unmounts
                     React.useEffect(() => () => { unpatch(); }, []);
 
-                    // Find all ActionSheetRowGroups — same pattern as JumpToTop reference
-                    const groups: any[] = findInReactTree(
+                    // Runs instead of Discord's normal delete flow
+                    const silentPress = () => {
+                        ActionSheet.hideActionSheet();
+                        silentDeleteMessage(channelId, messageId);
+                    };
+
+                    // Find Discord's own Delete row and swap its handler for the silent one,
+                    // keeping the original label/icon/appearance untouched
+                    const groups: any[] | null = findInReactTree(
                         component,
                         (c: any) => Array.isArray(c) && c[0]?.type?.name === "ActionSheetRowGroup"
                     );
@@ -83,49 +93,26 @@ export default {
                         return;
                     }
 
-                    const silentDeleteButton = React.createElement(ActionSheetRow, {
-                        label: "Silent Delete",
-                        destructive: true,
-                        icon: React.createElement(ActionSheetRow.Icon, {
-                            source: DeleteIcon,
-                            color: "#ed4245",
-                        }),
-                        onPress: () => {
-                            ActionSheet.hideActionSheet();
-                            silentDeleteMessage(channelId, messageId);
-                        },
-                    });
-
-                    // Search every group for the Delete row; insert Silent Delete just above it
-                    let inserted = false;
-                    for (let gi = 0; gi < groups.length; gi++) {
-                        const groupChildren: any[] = findInReactTree(
-                            groups[gi],
-                            (c: any) => Array.isArray(c) && c.some((child: any) =>
-                                child?.type?.name === "ActionSheetRow"
-                            )
+                    let replaced = false;
+                    for (const group of groups) {
+                        const rows: any[] | null = findInReactTree(
+                            group,
+                            (c: any) => Array.isArray(c) && c.some(isDeleteRow)
                         );
-                        if (!groupChildren) continue;
+                        if (!rows) continue;
 
-                        const deleteRowIndex = groupChildren.findIndex((c: any) =>
-                            c?.props?.label?.toLowerCase?.()?.includes?.("delete") ||
-                            c?.props?.message?.toLowerCase?.()?.includes?.("delete")
-                        );
+                        const deleteRowIndex = rows.findIndex(isDeleteRow);
+                        if (deleteRowIndex < 0) continue;
 
-                        if (deleteRowIndex >= 0) {
-                            groupChildren.splice(deleteRowIndex, 0, silentDeleteButton);
-                            inserted = true;
-                            break;
-                        }
+                        rows[deleteRowIndex] = React.cloneElement(rows[deleteRowIndex], {
+                            onPress: silentPress,
+                        });
+                        replaced = true;
+                        break;
                     }
 
-                    if (!inserted) {
-                        // Fallback: add as own group before the last group (where Delete usually lives)
-                        logger.warn("[SilentDelete] Delete row not found, inserting before last group");
-                        const insertAt = Math.max(0, groups.length - 1);
-                        groups.splice(insertAt, 0,
-                            React.createElement(ActionSheetRow.Group, null, silentDeleteButton)
-                        );
+                    if (!replaced) {
+                        logger.warn("[SilentDelete] Discord Delete row not found, nothing replaced");
                     }
                 });
             });
