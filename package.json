@@ -16,10 +16,6 @@
 		"vendetta-types": "latest"
 	},
 	"pnpm": {
-		"onlyBuiltDependencies": [
-			"@swc/core",
-			"esbuild"
-		],
 		"peerDependencyRules": {
 			"ignoreMissing": [
 				"react",
