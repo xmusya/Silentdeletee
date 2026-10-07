@@ -44,3 +44,5 @@ node build.mjs
 
 - [snipermaster226](https://github.com/snipermaster226) — оригинальный плагин
 - [Fierdetta/plugin-template](https://github.com/Fierdetta/plugin-template) — шаблон
+
+- # НЕ РАБОТАЕТ!(не эдитит сообщение перед удалением)
