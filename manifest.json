@@ -1,0 +1,1 @@
+{"name":"SilentDelete","description":"Silently deletes a message to bypass vencord message loggers.","authors":[{"name":"snipermaster226","id":"798441657895878696"}],"main":"index.js","vendetta":{"icon":"ic_trash_24px"},"hash":"d1f42cc343f0e7a35545a7cf4a1e60cb0becb2a99c2ce35970c59cd54128e3af"}
